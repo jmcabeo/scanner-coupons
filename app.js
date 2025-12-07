@@ -7,9 +7,9 @@
 // CONFIGURATION
 // ========================================
 const CONFIG = {
-    // n8n Webhook URLs
-    N8N_CHECK_URL: 'https://n8n.captialeads.com/webhook/check-status',
-    N8N_COMMIT_URL: 'https://n8n.captialeads.com/webhook/commit-validation',
+    // n8n Webhook URLs - CONFIGURA TUS URLS
+    N8N_CHECK_URL: 'https://TU-N8N.com/webhook/check-status',
+    N8N_COMMIT_URL: 'https://TU-N8N.com/webhook/commit-validation',
 
     // LocalStorage Keys
     STORAGE_PIN_KEY: 'omnia_store_pin',
@@ -131,7 +131,7 @@ function handlePinSubmit() {
     // Validate PIN against n8n
     showLoading('Verificando PIN...');
 
-    fetch('https://n8n.captialeads.com/webhook/verify-pin', {
+    fetch('https://TU-N8N.com/webhook/verify-pin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin })
