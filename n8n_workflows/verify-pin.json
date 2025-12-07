@@ -1,0 +1,135 @@
+{
+    "name": "Omnia - Verify PIN",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "verify-pin",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                240,
+                300
+            ],
+            "webhookId": "verify-pin"
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": ""
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "stores"
+                },
+                "filtersUI": {
+                    "values": [
+                        {
+                            "lookupColumn": "pin",
+                            "lookupValue": "={{ $json.pin }}"
+                        },
+                        {
+                            "lookupColumn": "active",
+                            "lookupValue": "TRUE"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "name": "Buscar PIN",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.4,
+            "position": [
+                460,
+                300
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "CONFIGURAR",
+                    "name": "Google Sheets"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "const stores = $input.all();\n\nif (stores.length === 0) {\n  return { valid: false, message: 'PIN inválido o tienda desactivada' };\n}\n\nconst store = stores[0].json;\nreturn {\n  valid: true,\n  store_name: store.name,\n  message: 'PIN válido'\n};"
+            },
+            "name": "Verificar Resultado",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                680,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ $json }}",
+                "options": {
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "name": "Respuesta",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [
+                900,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Buscar PIN",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Buscar PIN": {
+            "main": [
+                [
+                    {
+                        "node": "Verificar Resultado",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Verificar Resultado": {
+            "main": [
+                [
+                    {
+                        "node": "Respuesta",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    }
+}

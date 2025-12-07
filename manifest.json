@@ -1,0 +1,24 @@
+{
+    "name": "Omnia Scanner",
+    "short_name": "Scanner",
+    "description": "Sistema de validación de cupones Omnia 3.0",
+    "start_url": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#0f0f1a",
+    "theme_color": "#6c63ff",
+    "icons": [
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%236c63ff' width='100' height='100' rx='20'/><text y='.9em' x='10' font-size='80'>🎫</text></svg>",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": [
+        "business",
+        "utilities"
+    ],
+    "lang": "es",
+    "dir": "ltr"
+}

@@ -1,0 +1,354 @@
+{
+    "name": "Omnia 3.0 - Commit Validation (n8n)",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "commit-validation",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                0,
+                300
+            ],
+            "webhookId": "commit-validation"
+        },
+        {
+            "parameters": {
+                "jsCode": "// Parsear body\nconst { couponsession, storePin, money_spent } = $json;\n\nif (!couponsession) {\n  throw { httpCode: 400, message: 'Falta el ID del cupón' };\n}\n\nif (!storePin) {\n  throw { httpCode: 400, message: 'Falta el PIN de tienda' };\n}\n\nreturn { \n  couponsession, \n  storePin, \n  money_spent: parseFloat(money_spent) || 0 \n};"
+            },
+            "id": "parse-input",
+            "name": "Parsear Input",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                220,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": ""
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "stores"
+                },
+                "filtersUI": {
+                    "values": [
+                        {
+                            "lookupColumn": "pin",
+                            "lookupValue": "={{ $json.storePin }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "verify-pin",
+            "name": "Verificar PIN",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.4,
+            "position": [
+                440,
+                300
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "CONFIGURAR",
+                    "name": "Google Sheets"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Verificar PIN\nconst stores = $input.all();\nconst previousData = $('Parsear Input').first().json;\n\nif (stores.length === 0) {\n  throw { httpCode: 401, message: 'PIN de tienda inválido' };\n}\n\nconst store = stores[0].json;\nif (store.active !== 'TRUE' && store.active !== true) {\n  throw { httpCode: 401, message: 'Esta tienda está desactivada' };\n}\n\nreturn {\n  ...previousData,\n  store_name: store.name\n};"
+            },
+            "id": "check-pin",
+            "name": "Validar PIN",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                660,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.coupontools.com/v3/couponsession/data",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ session: $json.couponsession }) }}",
+                "options": {}
+            },
+            "id": "coupontools-get",
+            "name": "Obtener Cupón CT",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                880,
+                300
+            ],
+            "credentials": {
+                "httpHeaderAuth": {
+                    "id": "CONFIGURAR_CT",
+                    "name": "Coupontools API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Extraer datos del cupón\nconst ctResponse = $json;\nconst previousData = $('Validar PIN').first().json;\n\nif (!ctResponse || ctResponse.error) {\n  throw { httpCode: 404, message: ctResponse?.error_message || 'Cupón no encontrado' };\n}\n\nconst coupon = ctResponse.coupon || ctResponse;\nconst session = ctResponse.session || ctResponse;\n\nif (session.validated === 1 || session.validated === true) {\n  throw { httpCode: 409, message: 'Este cupón ya fue canjeado' };\n}\n\nif (session.voided === 1 || session.voided === true) {\n  throw { httpCode: 410, message: 'Este cupón ha sido anulado' };\n}\n\nreturn {\n  ...previousData,\n  ct_campaign_id: coupon.campaign_id || coupon.campaign?.id || session.campaign_id,\n  claimed_at: session.claimed_at || session.created_at || session.timestamp,\n  coupon_title: coupon.title || coupon.name || 'Cupón',\n  coupon_value: coupon.value || coupon.discount || coupon.amount || ''\n};"
+            },
+            "id": "extract-ct",
+            "name": "Extraer Datos CT",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": ""
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "validation_rules"
+                },
+                "filtersUI": {
+                    "values": [
+                        {
+                            "lookupColumn": "ct_campaign_id",
+                            "lookupValue": "={{ $json.ct_campaign_id }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "get-rules",
+            "name": "Obtener Reglas",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.4,
+            "position": [
+                1320,
+                300
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "CONFIGURAR",
+                    "name": "Google Sheets"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Validar reglas + gasto mínimo\nconst rules = $input.all();\nconst couponData = $('Extraer Datos CT').first().json;\n\nif (rules.length === 0) {\n  throw { httpCode: 403, message: 'No hay reglas configuradas para esta campaña' };\n}\n\nconst rule = rules[0].json;\n\nif (rule.active !== 'TRUE' && rule.active !== true) {\n  throw { httpCode: 403, message: 'Esta campaña no está activa' };\n}\n\n// Fechas y tiempos\nconst now = new Date();\nconst claimedAt = new Date(couponData.claimed_at);\nconst validAfterHours = parseInt(rule.valid_after_hours) || 24;\nconst validUntilDays = parseInt(rule.valid_until_days) || 8;\n\nconst validFrom = new Date(claimedAt.getTime() + (validAfterHours * 60 * 60 * 1000));\nconst validUntil = new Date(claimedAt.getTime() + (validUntilDays * 24 * 60 * 60 * 1000));\n\nif (now < validFrom) {\n  const hoursRemaining = Math.ceil((validFrom - now) / (1000 * 60 * 60));\n  throw { httpCode: 425, message: `Cupón válido en ${hoursRemaining} hora(s)` };\n}\n\nif (now > validUntil) {\n  throw { httpCode: 410, message: 'Este cupón ha expirado' };\n}\n\n// Día de la semana\nconst dayMap = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];\nconst today = dayMap[now.getDay()];\nconst allowedDays = (rule.days_allowed || '').split(',').map(d => d.trim());\n\nif (!allowedDays.includes(today)) {\n  throw { httpCode: 403, message: 'Este cupón no es válido hoy' };\n}\n\n// Horario\nconst currentHour = now.getHours();\nconst currentMinute = now.getMinutes();\nconst currentTime = currentHour * 60 + currentMinute;\n\nconst [startH, startM] = (rule.hours_start || '00:00').split(':').map(Number);\nconst [endH, endM] = (rule.hours_end || '23:59').split(':').map(Number);\nconst startTime = startH * 60 + startM;\nconst endTime = endH * 60 + endM;\n\nif (currentTime < startTime || currentTime > endTime) {\n  throw { httpCode: 403, message: `Válido solo de ${rule.hours_start} a ${rule.hours_end}` };\n}\n\n// GASTO MÍNIMO\nconst minSpend = parseFloat(rule.min_spend) || 0;\nconst actualSpend = couponData.money_spent;\n\nif (actualSpend < minSpend) {\n  throw { httpCode: 402, message: `Gasto mínimo: ${minSpend}€. Actual: ${actualSpend}€` };\n}\n\n// ¡TODO OK!\nreturn {\n  couponsession: couponData.couponsession,\n  money_spent: actualSpend,\n  coupon_title: couponData.coupon_title,\n  min_spend: minSpend\n};"
+            },
+            "id": "validate-rules",
+            "name": "Validar Reglas",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1540,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.coupontools.com/v3/couponsession/update",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ session: $json.couponsession, action: 'validate', data: { money_spent: $json.money_spent, validated_at: new Date().toISOString() } }) }}",
+                "options": {}
+            },
+            "id": "coupontools-burn",
+            "name": "Quemar Cupón CT",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1760,
+                300
+            ],
+            "credentials": {
+                "httpHeaderAuth": {
+                    "id": "CONFIGURAR_CT",
+                    "name": "Coupontools API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Verificar respuesta de quemado\nconst ctResponse = $json;\nconst validationData = $('Validar Reglas').first().json;\n\nconst CT_ERRORS = {\n  358: { httpCode: 409, message: 'Este cupón ya fue canjeado anteriormente' },\n  359: { httpCode: 410, message: 'Este cupón ha sido anulado' },\n  360: { httpCode: 410, message: 'Este cupón ha expirado' }\n};\n\nif (ctResponse.error || ctResponse.error_code) {\n  const knownError = CT_ERRORS[ctResponse.error_code];\n  if (knownError) throw knownError;\n  throw { httpCode: 400, message: ctResponse.error_message || 'Error al quemar cupón' };\n}\n\n// ¡ÉXITO!\nreturn {\n  success: true,\n  message: 'Cupón canjeado correctamente',\n  coupon_title: validationData.coupon_title,\n  money_spent: validationData.money_spent,\n  validated_at: new Date().toISOString()\n};"
+            },
+            "id": "finalize",
+            "name": "Finalizar",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1980,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ $json }}",
+                "options": {
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "response-ok",
+            "name": "Respuesta OK",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [
+                2200,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Parsear Input",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parsear Input": {
+            "main": [
+                [
+                    {
+                        "node": "Verificar PIN",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Verificar PIN": {
+            "main": [
+                [
+                    {
+                        "node": "Validar PIN",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validar PIN": {
+            "main": [
+                [
+                    {
+                        "node": "Obtener Cupón CT",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Obtener Cupón CT": {
+            "main": [
+                [
+                    {
+                        "node": "Extraer Datos CT",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extraer Datos CT": {
+            "main": [
+                [
+                    {
+                        "node": "Obtener Reglas",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Obtener Reglas": {
+            "main": [
+                [
+                    {
+                        "node": "Validar Reglas",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validar Reglas": {
+            "main": [
+                [
+                    {
+                        "node": "Quemar Cupón CT",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Quemar Cupón CT": {
+            "main": [
+                [
+                    {
+                        "node": "Finalizar",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Finalizar": {
+            "main": [
+                [
+                    {
+                        "node": "Respuesta OK",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    }
+}
